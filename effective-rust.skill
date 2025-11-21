@@ -1,0 +1,1207 @@
+name: effective-rust
+description: |
+  Comprehensive guide to Rust best practices from the book "Effective Rust" by David Drysdale.
+  This skill provides expert guidance on Rust programming patterns, idiomatic code, type system usage,
+  traits, error handling, and tooling. Use this skill when working on Rust projects that need best
+  practices, code review guidance, or understanding of idiomatic Rust patterns.
+  
+  Scope: Covers Rust type system, traits, error handling, concepts like lifetimes and borrowing,
+  dependencies management, and tooling recommendations.
+  
+  When to load: Load when working with Rust code, reviewing Rust implementations, or seeking guidance
+  on Rust best practices and idiomatic patterns.
+
+resources:
+  - name: types
+    description: |
+      Chapter on using Rust's type system effectively to express data structures and behavior.
+      Covers type system design, Option/Result transforms, idiomatic error types, and type conversions.
+      Load when: Working with Rust types, designing APIs, or implementing error handling.
+    content: |
+      # Chapter 1: Types
+      
+      ## Item 1: Use the Type System to Express Your Data Structures
+      
+      Rust's type system is powerful and should be leveraged to make invalid states unrepresentable.
+      Instead of using primitive types with validation, encode constraints in the type system.
+      
+      **Key principles:**
+      - Use newtypes to add semantic meaning to primitive types
+      - Use enums to express mutually exclusive states
+      - Use the type system to enforce invariants at compile time
+      - Prefer types that make illegal states impossible to represent
+      
+      **Example:**
+      ```rust
+      // Bad: Using primitives with runtime validation
+      struct User {
+          age: i32,  // Could be negative
+          email: String,  // Could be invalid format
+      }
+      
+      // Better: Use newtypes with validation
+      struct Age(u8);  // Can't be negative
+      struct Email(String);  // Validated on construction
+      
+      impl Email {
+          fn new(s: String) -> Result<Self, EmailError> {
+              if s.contains('@') {
+                  Ok(Email(s))
+              } else {
+                  Err(EmailError::Invalid)
+              }
+          }
+      }
+      ```
+      
+      ## Item 2: Use the Type System to Express Common Behavior
+      
+      Use traits to express common behavior and implement them for your types.
+      The standard library provides many useful traits that enable idiomatic Rust code.
+      
+      **Key traits to implement:**
+      - `Debug` for debugging output
+      - `Display` for user-facing output
+      - `Clone` and `Copy` for duplication semantics
+      - `Default` for default values
+      - `PartialEq` and `Eq` for equality
+      - `PartialOrd` and `Ord` for ordering
+      
+      **Example:**
+      ```rust
+      #[derive(Debug, Clone, PartialEq)]
+      struct Point {
+          x: f64,
+          y: f64,
+      }
+      
+      impl Default for Point {
+          fn default() -> Self {
+              Point { x: 0.0, y: 0.0 }
+          }
+      }
+      ```
+      
+      ## Item 3: Prefer Option and Result Transforms
+      
+      Instead of explicit pattern matching, use the transformation methods on `Option` and `Result`
+      to write more concise and expressive code.
+      
+      **Common transformations:**
+      - `map()` - transform the value if present
+      - `and_then()` / `flat_map()` - chain operations that return Option/Result
+      - `unwrap_or()` / `unwrap_or_else()` - provide default values
+      - `ok_or()` / `ok_or_else()` - convert Option to Result
+      - `?` operator - propagate errors
+      
+      **Example:**
+      ```rust
+      // Bad: Explicit matching
+      let result = match get_user() {
+          Some(user) => match user.email {
+              Some(email) => email.to_uppercase(),
+              None => String::from("NO EMAIL"),
+          },
+          None => String::from("NO USER"),
+      };
+      
+      // Good: Using transforms
+      let result = get_user()
+          .and_then(|u| u.email)
+          .map(|e| e.to_uppercase())
+          .unwrap_or_else(|| String::from("NO EMAIL"));
+      ```
+      
+      ## Item 4: Prefer Idiomatic Error Types
+      
+      Design error types that are idiomatic and composable. Use the standard error traits
+      and provide good error messages.
+      
+      **Best practices:**
+      - Implement `std::error::Error` trait
+      - Implement `Display` for human-readable messages
+      - Use `thiserror` or similar crates for reducing boilerplate
+      - Make errors specific and informative
+      - Use error enums to represent different failure modes
+      
+      **Example:**
+      ```rust
+      use std::fmt;
+      
+      #[derive(Debug)]
+      enum ConfigError {
+          IoError(std::io::Error),
+          ParseError(String),
+          MissingField(String),
+      }
+      
+      impl fmt::Display for ConfigError {
+          fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+              match self {
+                  ConfigError::IoError(e) => write!(f, "IO error: {}", e),
+                  ConfigError::ParseError(s) => write!(f, "Parse error: {}", s),
+                  ConfigError::MissingField(s) => write!(f, "Missing field: {}", s),
+              }
+          }
+      }
+      
+      impl std::error::Error for ConfigError {}
+      ```
+      
+      ## Item 5: Understand Type Conversions
+      
+      Rust provides several traits for type conversions. Choose the right one for your use case.
+      
+      **Conversion traits:**
+      - `From` / `Into` - infallible conversions
+      - `TryFrom` / `TryInto` - fallible conversions
+      - `AsRef` / `AsMut` - cheap reference conversions
+      - `Deref` / `DerefMut` - automatic dereferencing
+      
+      **Guidelines:**
+      - Implement `From` instead of `Into` (Into is automatically implemented)
+      - Use `TryFrom` when conversion can fail
+      - Implement `AsRef` for cheap reference conversions
+      - Only implement `Deref` for smart pointer types
+      
+      **Example:**
+      ```rust
+      struct UserId(u64);
+      
+      impl From<u64> for UserId {
+          fn from(id: u64) -> Self {
+              UserId(id)
+          }
+      }
+      
+      // Now both From and Into work
+      let user_id: UserId = 42u64.into();
+      let user_id = UserId::from(42u64);
+      ```
+
+  - name: traits
+    description: |
+      Chapter on Rust traits and their effective usage. Covers standard traits, Drop for RAII,
+      Deref vs AsRef, and borrowing patterns. Load when: Implementing traits, designing abstractions,
+      or working with smart pointers and RAII patterns.
+    content: |
+      # Chapter 2: Traits
+      
+      ## Item 10: Familiarize Yourself with Standard Traits
+      
+      The Rust standard library provides many traits that enable common functionality.
+      Understanding these traits is essential for writing idiomatic Rust code.
+      
+      **Essential standard traits:**
+      
+      **Derivable traits:**
+      - `Debug` - formatted debugging output
+      - `Clone` - explicit duplication
+      - `Copy` - implicit bitwise copy (for small, stack-only types)
+      - `PartialEq`, `Eq` - equality comparisons
+      - `PartialOrd`, `Ord` - ordering comparisons
+      - `Hash` - hashing for HashMap/HashSet
+      
+      **Common traits:**
+      - `Default` - default value creation
+      - `Display` - user-facing formatted output
+      - `Iterator` - iteration protocol
+      - `From`/`Into` - type conversions
+      - `Error` - error handling
+      
+      **Example:**
+      ```rust
+      #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+      struct Token {
+          value: String,
+          position: usize,
+      }
+      
+      impl Default for Token {
+          fn default() -> Self {
+              Token {
+                  value: String::new(),
+                  position: 0,
+              }
+          }
+      }
+      ```
+      
+      ## Item 11: Implement the Drop Trait for RAII Patterns
+      
+      Use the `Drop` trait to implement Resource Acquisition Is Initialization (RAII) patterns.
+      This ensures resources are properly cleaned up when values go out of scope.
+      
+      **Use cases for Drop:**
+      - Closing file handles
+      - Releasing locks
+      - Freeing memory
+      - Cleaning up temporary files
+      - Closing network connections
+      
+      **Example:**
+      ```rust
+      struct TempFile {
+          path: PathBuf,
+      }
+      
+      impl TempFile {
+          fn new(path: PathBuf) -> std::io::Result<Self> {
+              std::fs::File::create(&path)?;
+              Ok(TempFile { path })
+          }
+      }
+      
+      impl Drop for TempFile {
+          fn drop(&mut self) {
+              let _ = std::fs::remove_file(&self.path);
+          }
+      }
+      
+      // File is automatically deleted when TempFile goes out of scope
+      {
+          let temp = TempFile::new("temp.txt".into())?;
+          // Use temp file...
+      } // TempFile goes out of scope here, Drop trait called, file deleted
+      ```
+      
+      ## Item 12: Understand the Differences Between Deref and AsRef
+      
+      `Deref` and `AsRef` both provide reference conversions, but they serve different purposes.
+      
+      **Deref:**
+      - Used for smart pointer types (Box, Rc, Arc, etc.)
+      - Enables automatic dereferencing with `.` operator
+      - Should only be implemented for pointer-like types
+      - Semantic meaning: "this type acts like a pointer to T"
+      
+      **AsRef:**
+      - Used for cheap reference-to-reference conversions
+      - Must be explicitly called or used in generic bounds
+      - Can be implemented widely
+      - Semantic meaning: "this type can be viewed as a reference to T"
+      
+      **Example:**
+      ```rust
+      use std::ops::Deref;
+      
+      // Deref for smart pointer
+      struct MyBox<T>(T);
+      
+      impl<T> Deref for MyBox<T> {
+          type Target = T;
+          
+          fn deref(&self) -> &T {
+              &self.0
+          }
+      }
+      
+      // AsRef for cheap conversions
+      struct Wrapper(String);
+      
+      impl AsRef<str> for Wrapper {
+          fn as_ref(&self) -> &str {
+              &self.0
+          }
+      }
+      
+      fn print_str(s: &str) {
+          println!("{}", s);
+      }
+      
+      let w = Wrapper(String::from("hello"));
+      print_str(w.as_ref());  // Explicit conversion
+      ```
+      
+      ## Item 13: Use Borrows for Cheap Read-Only Access
+      
+      Prefer borrowing over ownership when you only need read access to data.
+      This makes APIs more flexible and efficient.
+      
+      **Benefits of borrowing:**
+      - No ownership transfer needed
+      - Caller retains control of data
+      - Zero-cost abstraction
+      - Works with owned and borrowed data
+      
+      **Best practices:**
+      - Accept `&str` instead of `String`
+      - Accept `&[T]` instead of `Vec<T>`
+      - Use `AsRef<T>` for generic acceptance
+      - Only take ownership when necessary
+      
+      **Example:**
+      ```rust
+      // Bad: Takes ownership unnecessarily
+      fn process_name(name: String) -> usize {
+          name.len()
+      }
+      
+      // Good: Borrows for read-only access
+      fn process_name(name: &str) -> usize {
+          name.len()
+      }
+      
+      // Even better: Generic with AsRef
+      fn process_name<S: AsRef<str>>(name: S) -> usize {
+          name.as_ref().len()
+      }
+      
+      // Now all of these work:
+      let owned = String::from("Alice");
+      let borrowed = "Bob";
+      process_name(&owned);
+      process_name(borrowed);
+      process_name(&owned);  // With AsRef version
+      process_name(owned);   // With AsRef version
+      ```
+
+  - name: concepts
+    description: |
+      Core Rust concepts including lifetimes, borrow checker, and state management.
+      Covers lifetime annotations, borrowing rules, and strategies to avoid shared state issues.
+      Load when: Debugging borrow checker errors, working with complex lifetime scenarios,
+      or designing concurrent systems.
+    content: |
+      # Chapter 3: Concepts
+      
+      ## Item 14: Understand Lifetimes
+      
+      Lifetimes are Rust's way of tracking how long references are valid. They prevent
+      dangling references and use-after-free bugs at compile time.
+      
+      **Key concepts:**
+      - Lifetime annotations describe relationships between references
+      - The borrow checker uses lifetimes to verify memory safety
+      - Most lifetimes are inferred, but sometimes annotations are needed
+      - Lifetime elision rules reduce annotation burden
+      
+      **Lifetime elision rules:**
+      1. Each parameter that is a reference gets its own lifetime
+      2. If there is exactly one input lifetime, it's assigned to all output lifetimes
+      3. If there are multiple input lifetimes and one is `&self` or `&mut self`, 
+         the lifetime of `self` is assigned to all output lifetimes
+      
+      **Example:**
+      ```rust
+      // Explicit lifetime annotations
+      fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
+          if x.len() > y.len() { x } else { y }
+      }
+      
+      // Lifetime elision - no annotations needed
+      fn first_word(s: &str) -> &str {
+          s.split_whitespace().next().unwrap_or("")
+      }
+      
+      // Struct with lifetime
+      struct Excerpt<'a> {
+          text: &'a str,
+      }
+      
+      impl<'a> Excerpt<'a> {
+          fn get_text(&self) -> &'a str {
+              self.text
+          }
+      }
+      ```
+      
+      ## Item 15: Understand the Borrow Checker
+      
+      The borrow checker enforces Rust's ownership rules at compile time, ensuring
+      memory safety without garbage collection.
+      
+      **Borrowing rules:**
+      1. At any time, you can have either:
+         - One mutable reference, OR
+         - Any number of immutable references
+      2. References must always be valid (no dangling references)
+      
+      **Common patterns:**
+      - Scope-based borrowing: limit borrow scope to satisfy checker
+      - Splitting borrows: borrow different parts of a struct separately
+      - Using methods that return owned data instead of references
+      - Cloning when necessary (trade performance for simplicity)
+      
+      **Example:**
+      ```rust
+      // Borrow checker error
+      fn bad_example() {
+          let mut v = vec![1, 2, 3];
+          let first = &v[0];          // Immutable borrow
+          v.push(4);                   // Error: cannot borrow `v` as mutable while immutable borrow exists
+          println!("{}", first);
+      }
+      
+      // Fixed: limit scope
+      fn good_example() {
+          let mut v = vec![1, 2, 3];
+          {
+              let first = &v[0];       // Immutable borrow in limited scope
+              println!("{}", first);
+          }                            // Borrow ends here
+          v.push(4);                   // OK: no active borrows
+      }
+      
+      // Splitting borrows
+      struct Data {
+          field1: Vec<i32>,
+          field2: Vec<i32>,
+      }
+      
+      impl Data {
+          fn process(&mut self) {
+              // Can borrow different fields mutably at same time
+              let f1 = &mut self.field1;
+              let f2 = &mut self.field2;
+              // Process both...
+          }
+      }
+      ```
+      
+      ## Item 16: Avoid Shared State
+      
+      Shared mutable state is a common source of bugs. Rust's ownership system
+      makes it difficult to create shared mutable state, which is a good thing.
+      
+      **Strategies to avoid shared state:**
+      - Use message passing instead of shared memory
+      - Use channels for communication between threads
+      - Leverage ownership to pass data between threads
+      - When shared state is necessary, use proper synchronization primitives
+      
+      **Safe shared state primitives:**
+      - `Arc<T>` - Atomic reference counting for shared ownership
+      - `Mutex<T>` - Mutual exclusion for shared mutable access
+      - `RwLock<T>` - Reader-writer lock for multiple readers OR one writer
+      - `atomic` types - Lock-free atomic operations
+      
+      **Example:**
+      ```rust
+      use std::sync::{Arc, Mutex};
+      use std::thread;
+      
+      // Shared state with proper synchronization
+      fn with_shared_state() {
+          let counter = Arc::new(Mutex::new(0));
+          let mut handles = vec![];
+          
+          for _ in 0..10 {
+              let counter = Arc::clone(&counter);
+              let handle = thread::spawn(move || {
+                  let mut num = counter.lock().unwrap();
+                  *num += 1;
+              });
+              handles.push(handle);
+          }
+          
+          for handle in handles {
+              handle.join().unwrap();
+          }
+          
+          println!("Result: {}", *counter.lock().unwrap());
+      }
+      
+      // Better: Message passing
+      use std::sync::mpsc;
+      
+      fn with_message_passing() {
+          let (tx, rx) = mpsc::channel();
+          let mut handles = vec![];
+          
+          for i in 0..10 {
+              let tx = tx.clone();
+              let handle = thread::spawn(move || {
+                  tx.send(i).unwrap();
+              });
+              handles.push(handle);
+          }
+          
+          drop(tx);  // Close the sending side
+          
+          let sum: i32 = rx.iter().sum();
+          println!("Result: {}", sum);
+      }
+      ```
+
+  - name: dependencies
+    description: |
+      Managing Rust project dependencies and avoiding dependency bloat. Covers dependency graph
+      management and feature creep prevention. Load when: Adding dependencies, optimizing build times,
+      or reviewing crate dependencies.
+    content: |
+      # Chapter 4: Dependencies
+      
+      ## Item 25: Manage Your Dependency Graph
+      
+      Dependencies can significantly impact your project's build time, binary size, and
+      maintenance burden. Manage them carefully.
+      
+      **Best practices:**
+      - Minimize dependencies - only add what you need
+      - Audit dependencies regularly for security and maintenance
+      - Check dependency trees with `cargo tree`
+      - Use `cargo-geiger` to identify unsafe code in dependencies
+      - Consider the transitive dependency impact
+      - Prefer well-maintained crates with good documentation
+      
+      **Tools for dependency management:**
+      - `cargo tree` - visualize dependency graph
+      - `cargo outdated` - check for outdated dependencies
+      - `cargo audit` - check for security vulnerabilities
+      - `cargo-geiger` - detect unsafe code usage
+      - `cargo-deny` - lint dependencies
+      
+      **Example Cargo.toml management:**
+      ```toml
+      [dependencies]
+      # Specify versions carefully
+      serde = { version = "1.0", default-features = false, features = ["derive"] }
+      
+      [dev-dependencies]
+      # Test dependencies don't affect production binary
+      criterion = "0.5"
+      
+      [build-dependencies]
+      # Build-time only dependencies
+      cc = "1.0"
+      ```
+      
+      **Checking dependencies:**
+      ```bash
+      # View dependency tree
+      cargo tree
+      
+      # Find duplicate dependencies
+      cargo tree --duplicates
+      
+      # Check for security vulnerabilities
+      cargo audit
+      
+      # Find outdated dependencies
+      cargo outdated
+      ```
+      
+      ## Item 26: Be Wary of Feature Creep
+      
+      Cargo features allow conditional compilation, but they can lead to complexity.
+      Use them judiciously.
+      
+      **When to use features:**
+      - Optional dependencies
+      - Platform-specific code
+      - Different backends or implementations
+      - Enabling expensive or niche functionality
+      
+      **When to avoid features:**
+      - Features that should always be enabled
+      - Too many interdependent features
+      - Features that significantly complicate testing
+      
+      **Best practices:**
+      - Make features additive (enabling a feature shouldn't break other code)
+      - Document features clearly
+      - Test different feature combinations
+      - Use feature gates sparingly
+      - Consider workspace members instead of features for large variations
+      
+      **Example:**
+      ```toml
+      [features]
+      # Default features
+      default = ["std"]
+      
+      # Optional feature
+      std = []
+      
+      # Features with optional dependencies
+      json = ["serde_json"]
+      xml = ["serde_xml"]
+      
+      [dependencies]
+      serde = "1.0"
+      serde_json = { version = "1.0", optional = true }
+      serde_xml = { version = "0.5", optional = true }
+      ```
+      
+      **Testing features:**
+      ```bash
+      # Test with no features
+      cargo test --no-default-features
+      
+      # Test with specific features
+      cargo test --features json
+      
+      # Test with all features
+      cargo test --all-features
+      ```
+      
+      **Managing feature complexity:**
+      - Keep the number of features small
+      - Avoid feature interactions when possible
+      - Document feature requirements clearly
+      - Use CI to test important feature combinations
+      - Consider if separate crates would be clearer
+
+  - name: tooling
+    description: |
+      Essential Rust development tools and their usage. Covers Clippy for linting,
+      rustfmt for formatting, and testing practices. Load when: Setting up Rust projects,
+      establishing code quality standards, or configuring CI/CD.
+    content: |
+      # Chapter 5: Tooling
+      
+      ## Item 31: Use Clippy
+      
+      Clippy is Rust's official linter that catches common mistakes and suggests
+      idiomatic improvements.
+      
+      **Why use Clippy:**
+      - Catches bugs and anti-patterns
+      - Suggests idiomatic Rust code
+      - Improves code quality and readability
+      - Teaches Rust best practices
+      
+      **Installing and using Clippy:**
+      ```bash
+      # Install
+      rustup component add clippy
+      
+      # Run clippy
+      cargo clippy
+      
+      # Run clippy with all features
+      cargo clippy --all-features
+      
+      # Treat warnings as errors in CI
+      cargo clippy -- -D warnings
+      ```
+      
+      **Configuring Clippy:**
+      ```toml
+      # In clippy.toml or .clippy.toml
+      # Set maximum allowed cognitive complexity
+      cognitive-complexity-threshold = 30
+      
+      # In Cargo.toml
+      [workspace.lints.clippy]
+      # Deny certain lints
+      unwrap_used = "deny"
+      expect_used = "deny"
+      
+      # Allow certain lints project-wide
+      too_many_arguments = "allow"
+      ```
+      
+      **Selective Clippy attributes:**
+      ```rust
+      // Allow specific lint for function
+      #[allow(clippy::needless_return)]
+      fn example() -> i32 {
+          return 42;
+      }
+      
+      // Deny unwrap in module
+      #![deny(clippy::unwrap_used)]
+      
+      // Warn on specific lint
+      #[warn(clippy::todo)]
+      fn work_in_progress() {
+          todo!("Implement this");
+      }
+      ```
+      
+      ## Item 32: Use rustfmt
+      
+      rustfmt is the official Rust code formatter. Use it to maintain consistent
+      code style across your project.
+      
+      **Benefits:**
+      - Consistent code style
+      - No arguments about formatting in code reviews
+      - Automatic formatting saves time
+      - Readable code
+      
+      **Installing and using rustfmt:**
+      ```bash
+      # Install
+      rustup component add rustfmt
+      
+      # Format code
+      cargo fmt
+      
+      # Check formatting without modifying
+      cargo fmt -- --check
+      
+      # Format specific file
+      rustfmt src/main.rs
+      ```
+      
+      **Configuring rustfmt:**
+      ```toml
+      # In rustfmt.toml or .rustfmt.toml
+      max_width = 100
+      hard_tabs = false
+      tab_spaces = 4
+      edition = "2021"
+      
+      # Formatting options
+      use_small_heuristics = "Default"
+      fn_call_width = 60
+      struct_lit_width = 18
+      
+      # Import formatting
+      imports_granularity = "Crate"
+      group_imports = "StdExternalCrate"
+      ```
+      
+      **CI Integration:**
+      ```yaml
+      # In .github/workflows/ci.yml
+      - name: Check formatting
+        run: cargo fmt -- --check
+      ```
+      
+      ## Item 33: Use Tests
+      
+      Testing is essential for reliable software. Rust has excellent built-in
+      testing support.
+      
+      **Types of tests:**
+      - **Unit tests** - test individual functions/modules
+      - **Integration tests** - test public API
+      - **Doc tests** - test code in documentation
+      
+      **Writing unit tests:**
+      ```rust
+      #[cfg(test)]
+      mod tests {
+          use super::*;
+          
+          #[test]
+          fn test_addition() {
+              assert_eq!(2 + 2, 4);
+          }
+          
+          #[test]
+          fn test_error_case() {
+              let result = divide(10, 0);
+              assert!(result.is_err());
+          }
+          
+          #[test]
+          #[should_panic(expected = "divide by zero")]
+          fn test_panic() {
+              divide_unchecked(10, 0);
+          }
+      }
+      ```
+      
+      **Integration tests:**
+      ```rust
+      // In tests/integration_test.rs
+      use my_crate;
+      
+      #[test]
+      fn test_public_api() {
+          let result = my_crate::public_function();
+          assert_eq!(result, expected_value);
+      }
+      ```
+      
+      **Doc tests:**
+      ```rust
+      /// Adds two numbers together.
+      ///
+      /// # Examples
+      ///
+      /// ```
+      /// let result = my_crate::add(2, 2);
+      /// assert_eq!(result, 4);
+      /// ```
+      pub fn add(a: i32, b: i32) -> i32 {
+          a + b
+      }
+      ```
+      
+      **Running tests:**
+      ```bash
+      # Run all tests
+      cargo test
+      
+      # Run specific test
+      cargo test test_addition
+      
+      # Run tests with output
+      cargo test -- --nocapture
+      
+      # Run tests in parallel/serial
+      cargo test -- --test-threads=1
+      
+      # Run only doc tests
+      cargo test --doc
+      
+      # Run ignored tests
+      cargo test -- --ignored
+      ```
+      
+      **Test organization:**
+      - Keep tests close to the code they test
+      - Use descriptive test names
+      - Test edge cases and error conditions
+      - Use test fixtures and helpers
+      - Don't test private implementation details
+      
+      **Advanced testing:**
+      ```rust
+      // Property-based testing with proptest
+      use proptest::prelude::*;
+      
+      proptest! {
+          #[test]
+          fn test_reversible(s in "\\PC*") {
+              let encoded = encode(&s);
+              let decoded = decode(&encoded).unwrap();
+              assert_eq!(s, decoded);
+          }
+      }
+      
+      // Benchmarking with criterion
+      use criterion::{black_box, criterion_group, criterion_main, Criterion};
+      
+      fn benchmark_function(c: &mut Criterion) {
+          c.bench_function("my_function", |b| {
+              b.iter(|| my_function(black_box(42)))
+          });
+      }
+      
+      criterion_group!(benches, benchmark_function);
+      criterion_main!(benches);
+      ```
+
+  - name: error-handling
+    description: |
+      Advanced error handling patterns in Rust. Covers error types, propagation,
+      context, and error handling libraries. Load when: Implementing error handling,
+      designing error types, or working with Result types.
+    content: |
+      # Error Handling Best Practices
+      
+      ## Custom Error Types
+      
+      Design error types that provide useful information and compose well.
+      
+      **Using thiserror:**
+      ```rust
+      use thiserror::Error;
+      use std::io;
+      
+      #[derive(Error, Debug)]
+      pub enum DataStoreError {
+          #[error("data store disconnected")]
+          Disconnect(#[from] io::Error),
+          
+          #[error("invalid header (expected {expected:?}, found {found:?})")]
+          InvalidHeader {
+              expected: String,
+              found: String,
+          },
+          
+          #[error("unknown data store error")]
+          Unknown,
+      }
+      ```
+      
+      ## Error Context
+      
+      Provide context when propagating errors to aid debugging.
+      
+      **Using anyhow:**
+      ```rust
+      use anyhow::{Context, Result};
+      
+      fn read_config() -> Result<Config> {
+          let path = "config.toml";
+          let contents = std::fs::read_to_string(path)
+              .context(format!("Failed to read config file: {}", path))?;
+          
+          let config: Config = toml::from_str(&contents)
+              .context("Failed to parse config file")?;
+          
+          Ok(config)
+      }
+      ```
+      
+      ## Error Propagation
+      
+      Use the `?` operator for clean error propagation.
+      
+      ```rust
+      fn process_file(path: &str) -> Result<Data, MyError> {
+          let file = File::open(path)?;
+          let reader = BufReader::new(file);
+          let data = parse_data(reader)?;
+          validate_data(&data)?;
+          Ok(data)
+      }
+      ```
+      
+      ## Recovery and Fallbacks
+      
+      Handle errors gracefully with recovery strategies.
+      
+      ```rust
+      fn get_cached_or_fetch(key: &str) -> Result<Value> {
+          cache.get(key)
+              .or_else(|_| fetch_from_remote(key))
+              .or_else(|_| get_default_value())
+      }
+      ```
+
+  - name: performance
+    description: |
+      Performance optimization techniques for Rust code. Covers profiling, benchmarking,
+      and common optimization patterns. Load when: Optimizing performance, profiling code,
+      or investigating performance issues.
+    content: |
+      # Performance Optimization
+      
+      ## Profiling
+      
+      Always profile before optimizing to identify real bottlenecks.
+      
+      **Tools:**
+      - `cargo flamegraph` - Generate flame graphs
+      - `perf` - Linux performance profiling
+      - `Instruments` - macOS profiling
+      - `valgrind` - Memory profiling
+      
+      **Example:**
+      ```bash
+      # Install flamegraph
+      cargo install flamegraph
+      
+      # Generate flame graph
+      cargo flamegraph --bin myapp
+      ```
+      
+      ## Benchmarking
+      
+      Use criterion for accurate benchmarks.
+      
+      ```rust
+      use criterion::{black_box, criterion_group, criterion_main, Criterion};
+      
+      fn fibonacci(n: u64) -> u64 {
+          match n {
+              0 => 1,
+              1 => 1,
+              n => fibonacci(n-1) + fibonacci(n-2),
+          }
+      }
+      
+      fn criterion_benchmark(c: &mut Criterion) {
+          c.bench_function("fib 20", |b| b.iter(|| fibonacci(black_box(20))));
+      }
+      
+      criterion_group!(benches, criterion_benchmark);
+      criterion_main!(benches);
+      ```
+      
+      ## Common Optimizations
+      
+      **Avoid unnecessary allocations:**
+      ```rust
+      // Bad: Allocates new String
+      fn get_name(&self) -> String {
+          self.name.clone()
+      }
+      
+      // Good: Returns reference
+      fn get_name(&self) -> &str {
+          &self.name
+      }
+      ```
+      
+      **Use iterators:**
+      ```rust
+      // Iterators are often optimized better than loops
+      let sum: i32 = data.iter()
+          .filter(|&x| x % 2 == 0)
+          .sum();
+      ```
+      
+      **Inline small functions:**
+      ```rust
+      #[inline]
+      fn fast_path(&self) -> bool {
+          self.flag
+      }
+      ```
+      
+      **Use appropriate collection types:**
+      - `Vec` for sequential data
+      - `HashMap` for key-value lookups
+      - `BTreeMap` for ordered maps
+      - `HashSet` for unique values
+      - `SmallVec` for small, stack-allocated vectors
+      
+      **Consider `Cow` for conditional cloning:**
+      ```rust
+      use std::borrow::Cow;
+      
+      fn process(input: &str) -> Cow<str> {
+          if needs_modification(input) {
+              Cow::Owned(modify(input))
+          } else {
+              Cow::Borrowed(input)
+          }
+      }
+      ```
+
+  - name: concurrency
+    description: |
+      Concurrent and parallel programming patterns in Rust. Covers threads, async/await,
+      channels, and synchronization primitives. Load when: Implementing concurrent code,
+      working with async Rust, or debugging race conditions.
+    content: |
+      # Concurrency Patterns
+      
+      ## Threading
+      
+      Rust provides safe threading through ownership and type system.
+      
+      **Basic threading:**
+      ```rust
+      use std::thread;
+      use std::time::Duration;
+      
+      let handle = thread::spawn(|| {
+          for i in 1..10 {
+              println!("Thread: {}", i);
+              thread::sleep(Duration::from_millis(1));
+          }
+      });
+      
+      handle.join().unwrap();
+      ```
+      
+      **Scoped threads:**
+      ```rust
+      use std::thread;
+      
+      let mut data = vec![1, 2, 3];
+      
+      thread::scope(|s| {
+          s.spawn(|| {
+              println!("Length: {}", data.len());
+          });
+          s.spawn(|| {
+              data.push(4);
+          });
+      });
+      
+      assert_eq!(data, vec![1, 2, 3, 4]);
+      ```
+      
+      ## Message Passing
+      
+      Use channels for communication between threads.
+      
+      ```rust
+      use std::sync::mpsc;
+      use std::thread;
+      
+      let (tx, rx) = mpsc::channel();
+      
+      thread::spawn(move || {
+          tx.send("Hello from thread").unwrap();
+      });
+      
+      let message = rx.recv().unwrap();
+      println!("{}", message);
+      ```
+      
+      ## Async/Await
+      
+      Modern async Rust for efficient I/O-bound concurrency.
+      
+      ```rust
+      use tokio;
+      
+      #[tokio::main]
+      async fn main() {
+          let result = fetch_data().await;
+          println!("{:?}", result);
+      }
+      
+      async fn fetch_data() -> Result<String, Error> {
+          let response = reqwest::get("https://api.example.com")
+              .await?
+              .text()
+              .await?;
+          Ok(response)
+      }
+      ```
+      
+      **Concurrent async tasks:**
+      ```rust
+      use tokio;
+      
+      async fn process_all() {
+          let task1 = tokio::spawn(async { fetch_user(1).await });
+          let task2 = tokio::spawn(async { fetch_user(2).await });
+          
+          let (result1, result2) = tokio::join!(task1, task2);
+      }
+      ```
+      
+      ## Synchronization Primitives
+      
+      **Mutex for shared mutable state:**
+      ```rust
+      use std::sync::{Arc, Mutex};
+      use std::thread;
+      
+      let counter = Arc::new(Mutex::new(0));
+      let mut handles = vec![];
+      
+      for _ in 0..10 {
+          let counter = Arc::clone(&counter);
+          let handle = thread::spawn(move || {
+              let mut num = counter.lock().unwrap();
+              *num += 1;
+          });
+          handles.push(handle);
+      }
+      
+      for handle in handles {
+          handle.join().unwrap();
+      }
+      ```
+      
+      **RwLock for read-heavy workloads:**
+      ```rust
+      use std::sync::{Arc, RwLock};
+      
+      let data = Arc::new(RwLock::new(vec![1, 2, 3]));
+      
+      // Multiple readers
+      let reader1 = data.read().unwrap();
+      let reader2 = data.read().unwrap();
+      
+      // Single writer (blocks readers)
+      let mut writer = data.write().unwrap();
+      writer.push(4);
+      ```
+      
+      **Atomic types for lock-free operations:**
+      ```rust
+      use std::sync::atomic::{AtomicUsize, Ordering};
+      use std::sync::Arc;
+      
+      let counter = Arc::new(AtomicUsize::new(0));
+      
+      // Lock-free increment
+      counter.fetch_add(1, Ordering::SeqCst);
+      ```
