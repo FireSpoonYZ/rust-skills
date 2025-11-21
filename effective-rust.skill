@@ -262,7 +262,7 @@ resources:
       {
           let temp = TempFile::new("temp.txt".into())?;
           // Use temp file...
-      } // File deleted here
+      } // TempFile goes out of scope here, Drop trait called, file deleted
       ```
       
       ## Item 12: Understand the Differences Between Deref and AsRef
@@ -429,7 +429,7 @@ resources:
       fn bad_example() {
           let mut v = vec![1, 2, 3];
           let first = &v[0];          // Immutable borrow
-          v.push(4);                   // Error: mutable borrow while immutable exists
+          v.push(4);                   // Error: cannot borrow `v` as mutable while immutable borrow exists
           println!("{}", first);
       }
       
@@ -894,6 +894,7 @@ resources:
       **Using thiserror:**
       ```rust
       use thiserror::Error;
+      use std::io;
       
       #[derive(Error, Debug)]
       pub enum DataStoreError {
